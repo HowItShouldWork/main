@@ -30,7 +30,7 @@ jobs:
           OPENSTACK_K8S_TAG_VARIABLE="${{ vars.MAKEFILE_OPENSTACK_K8S_TAG_VAR || 'OPENSTACK_K8S_TAG' }}"
           TRIGGER_BRANCH="${{ vars.TRIGGER_BRANCH_NAME || 'olive' }}"
           SOURCE_BRANCH="${{ vars.SOURCE_BRANCH_NAME || 'main' }}"
-          DRY_RUN="${{ vars.DRY_RUN || 'false' }}"
+          DRY_RUN="${{ vars.RELEASE_DRY_RUN || 'false' }}"
 
           # Validate that required variables are set
           if [[ -z "$BRANCH_NAME" ]] || [[ -z "$NEW_VERSION" ]]; then
