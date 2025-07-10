@@ -30,6 +30,7 @@ jobs:
           OPENSTACK_K8S_TAG_VARIABLE="${{ vars.MAKEFILE_OPENSTACK_K8S_TAG_VAR || 'OPENSTACK_K8S_TAG' }}"
           TRIGGER_BRANCH="${{ vars.TRIGGER_BRANCH_NAME || 'olive' }}"
           SOURCE_BRANCH="${{ vars.SOURCE_BRANCH_NAME || 'main' }}"
+          DRY_RUN="${{ vars.DRY_RUN || 'false' }}"
 
           # Validate that required variables are set
           if [[ -z "$BRANCH_NAME" ]] || [[ -z "$NEW_VERSION" ]]; then
@@ -110,26 +111,37 @@ jobs:
                 fi
                   
                 # Commit the changes only if a modification was made
-                if [ "$made_changes" = true ]; then                  
-                  git config --global user.name "github-actions[bot]"
-                  git config --global user.email "github-actions[bot]@users.noreply.github.com"
-                  git add Makefile
-                  git commit -m "[${BRANCH_NAME}] Update Makefile for ${BRANCH_NAME}"
-                  echo "Commit for version update created."
+                if [ "$made_changes" = true ]; then
+                  if [ "$DRY_RUN" = "true" ]; then
+                    echo "DRY RUN: Showing changes for new branch '${BRANCH_NAME}':"
+                    git diff
+                  else
+                    git diff
+                    git config --global user.name "github-actions[bot]"
+                    git config --global user.email "github-actions[bot]@users.noreply.github.com"
+                    git add Makefile
+                    git commit -m "[${BRANCH_NAME}] Update Makefile for ${BRANCH_NAME}"
+                    echo "Commit for version update created."
+                  fi
                 else
                   echo "No updates in the Makefile. No commit will be created for this branch."
                 fi                    
               else
                   echo "No Makefile found. No changes will be committed to new branch."
               fi
-              
+
               # Push the new branch with the potential new commit
-              git push origin ${BRANCH_NAME}
-              echo "Branch successfully pushed."
+              if [ "$DRY_RUN" = "true" ]; then
+                echo "DRY RUN: Would push branch '${BRANCH_NAME}'."
+              else
+                git push origin ${BRANCH_NAME}
+                echo "Branch successfully pushed."
+              fi
+              
               created_repos+="${repo_name}\n"
 
+              # --- LOGIC: UPDATE SOURCE BRANCH AFTERWARDS ---
               if [[ "$repo_name" == "openstack-operator" ]]; then
-                # --- LOGIC: UPDATE SOURCE BRANCH AFTERWARDS ---
                 git checkout ${SOURCE_BRANCH}
                 # Ensure we have the latest version of the source branch before making changes
                 git pull origin ${SOURCE_BRANCH}
@@ -142,14 +154,20 @@ jobs:
                   if grep -qE "^${VERSION_VARIABLE}\s*(:=|\?=|=)" Makefile; then
                     echo "Updating variable '${VERSION_VARIABLE}' to '${FULL_MAKEFILE_VERSION}' on branch '${SOURCE_BRANCH}'."
                     sed -i -E "s/^(${VERSION_VARIABLE}\s*(:=|\?=|=)).*/\1 ${FULL_MAKEFILE_VERSION}/" Makefile
-                    
+
                     # Commit and push the change to the source branch
-                    git config --global user.name "github-actions[bot]"
-                    git config --global user.email "github-actions[bot]@users.noreply.github.com"
-                    git add Makefile
-                    git commit -m "Bump version to ${NEW_VERSION}"
-                    echo "Pushing version update to ${SOURCE_BRANCH}..."
-                    git push origin ${SOURCE_BRANCH}
+                    if [ "$DRY_RUN" = "true" ]; then
+                      echo "DRY RUN: Showing changes for source branch '${SOURCE_BRANCH}':"
+                      git diff
+                    else
+                      git diff
+                      git config --global user.name "github-actions[bot]"
+                      git config --global user.email "github-actions[bot]@users.noreply.github.com"
+                      git add Makefile
+                      git commit -m "Bump version to ${NEW_VERSION}"
+                      echo "Pushing version update to ${SOURCE_BRANCH}..."
+                      git push origin ${SOURCE_BRANCH}
+                    fi
                   else
                     echo "Variable '${VERSION_VARIABLE}' not found. No changes pushed to ${SOURCE_BRANCH}."
                   fi
@@ -168,7 +186,12 @@ jobs:
           done
 
           echo "-------------------------------------------"
-          echo "Summary of created repos where the new branch ${BRANCH_NAME} got created:"
+          if [ "$DRY_RUN" = "true" ]; then
+            echo "Summary of repos where the new branch ${BRANCH_NAME} would have been created (DRY RUN):"
+          else
+            echo "Summary of repos where the new branch ${BRANCH_NAME} was created:"
+          fi
+
           if [[ -n "$created_repos" ]]; then
             echo -e "$created_repos"
           else
