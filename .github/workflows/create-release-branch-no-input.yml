@@ -135,7 +135,7 @@ jobs:
                 git push origin ${BRANCH_NAME}
                 echo "Branch successfully pushed."
               fi
-              created_repos+="${repo_name}\n"
+              created_repos+="- ${repo_name}\n"
 
               # --- LOGIC: UPDATE SOURCE BRANCH AFTERWARDS ---
               if [[ "$repo_name" == "openstack-operator" ]]; then
