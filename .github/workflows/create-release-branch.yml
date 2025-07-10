@@ -1,5 +1,5 @@
 # .github/workflows/create-conditional-branches.yml
-name: Create Conditional Branch in Org Repos
+name: Create Feature Branches in Repos
 
 on:
   workflow_dispatch:
