@@ -5,31 +5,32 @@ on:
   workflow_dispatch:
     inputs:
       org_name:
-        description: 'The name of the GitHub organization'
+        description: 'The name of the GitHub organization. Defaults to HowItShouldWork'
+        default: 'HowItShouldWork'
         required: true
         type: string
       branch_name:
-        description: 'Name of the new branch to create (e.g., release/v2.1)'
+        description: 'Name of the new branch to create (e.g., 18.0-fr4)'
         required: true
         type: string
       new_version:
-        description: 'The new version to set in the Makefile (e.g., v2.1.0)'
+        description: 'The new version to set in the Makefile (e.g., 0.5)'
         required: true
         type: string
       version_variable_name:
-        description: 'The name of the version variable in the Makefile'
+        description: 'The name of the version variable in the Makefile. Defaults to VERSION'
         required: true
         default: 'VERSION'
         type: string
       trigger_branch:
-        description: 'The branch that must exist for the workflow to run on a repo.'
+        description: 'The branch that must exist for the workflow to run on a repo. Defaults to olive'
         required: true
         default: 'olive'
         type: string
       source_branch:
-        description: 'Source branch to create from. Defaults to the ORG_DEFAULT_SOURCE_BRANCH organization variable.'
+        description: 'Source branch to create from. Defaults to main.'
         required: true
-        default: ${{ vars.ORG_DEFAULT_SOURCE_BRANCH || 'main' }}
+        default: 'main'
         type: string
 
 jobs:
@@ -89,7 +90,6 @@ jobs:
                 git checkout ${SOURCE_BRANCH}
                 git checkout -b ${BRANCH_NAME}
 
-                # --- LOGIC: UPDATE VERSION ---
                 if [ -f "Makefile" ]; then
                   echo "Makefile found. Updating variable '${VERSION_VARIABLE}' to '${NEW_VERSION}'."
                   # This sed command is robust and handles := or =
