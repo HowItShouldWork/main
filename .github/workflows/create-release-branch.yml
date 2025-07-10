@@ -1,0 +1,122 @@
+# .github/workflows/create-conditional-branches.yml
+name: Create Conditional Branch in Org Repos
+
+on:
+  workflow_dispatch:
+    inputs:
+      org_name:
+        description: 'The name of the GitHub organization'
+        required: true
+        type: string
+      branch_name:
+        description: 'Name of the new branch to create (e.g., release/v2.1)'
+        required: true
+        type: string
+      new_version:
+        description: 'The new version to set in the Makefile (e.g., v2.1.0)'
+        required: true
+        type: string
+      version_variable_name:
+        description: 'The name of the version variable in the Makefile'
+        required: true
+        default: 'VERSION'
+        type: string
+      trigger_branch:
+        description: 'The branch that must exist for the workflow to run on a repo.'
+        required: true
+        default: 'olive'
+        type: string
+      source_branch:
+        description: 'Source branch to create from. Defaults to the ORG_DEFAULT_SOURCE_BRANCH organization variable.'
+        required: true
+        default: ${{ vars.ORG_DEFAULT_SOURCE_BRANCH || 'main' }}
+        type: string
+
+jobs:
+  create-branches:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code (for the workflow itself)
+        uses: actions/checkout@v4
+
+      - name: Create Branches and Update Version
+        env:
+          GH_TOKEN: ${{ secrets.ORG_ADMIN_PAT }}
+          ORG_NAME: ${{ github.event.inputs.org_name }}
+          BRANCH_NAME: ${{ github.event.inputs.branch_name }}
+          NEW_VERSION: ${{ github.event.inputs.new_version }}
+          VERSION_VARIABLE: ${{ github.event.inputs.version_variable_name }}
+          TRIGGER_BRANCH: ${{ github.event.inputs.trigger_branch }}
+          SOURCE_BRANCH: ${{ github.event.inputs.source_branch }}
+        run: |
+          set -e # Exit immediately if a command exits with a non-zero status.
+
+          echo "Searching for repositories in organization '${ORG_NAME}'..."
+
+          repos=$(gh repo list $ORG_NAME --limit 1000 --json name --jq '.[] | .name')
+
+          if [ -z "$repos" ]; then
+            echo "No repositories found in the organization or permissions are missing."
+            exit 1
+          fi
+
+          for repo_name in $repos; do
+            echo "--- Checking repository: ${repo_name} ---"
+
+            # Check if the trigger branch exists in the repository
+            branch_exists_response=$(gh api repos/${ORG_NAME}/${repo_name}/branches/${TRIGGER_BRANCH} --jq '.name' 2>/dev/null || true)
+
+            if [[ -n "$branch_exists_response" ]]; then
+              echo "✅ Trigger branch '${TRIGGER_BRANCH}' found in ${repo_name}."
+
+              TEMP_DIR=$(mktemp -d)
+              echo "Cloning repository into ${TEMP_DIR}..."
+              git clone "https://x-access-token:${GH_TOKEN}@github.com/${ORG_NAME}/${repo_name}.git" "$TEMP_DIR"
+              
+              cd "$TEMP_DIR"
+
+              if ! git show-ref --verify --quiet refs/remotes/origin/${SOURCE_BRANCH}; then
+                echo "⚠️ Source branch '${SOURCE_BRANCH}' does not exist in ${repo_name}. Skipping."
+                cd ..
+                rm -rf "$TEMP_DIR"
+                continue
+              fi
+
+              if git show-ref --verify --quiet refs/remotes/origin/${BRANCH_NAME}; then
+                echo "ℹ️ Branch '${BRANCH_NAME}' already exists in ${repo_name}. Skipping."
+              else
+                echo "Creating branch '${BRANCH_NAME}' from '${SOURCE_BRANCH}'..."
+                git checkout ${SOURCE_BRANCH}
+                git checkout -b ${BRANCH_NAME}
+
+                # --- LOGIC: UPDATE VERSION ---
+                if [ -f "Makefile" ]; then
+                  echo "Makefile found. Updating variable '${VERSION_VARIABLE}' to '${NEW_VERSION}'."
+                  # This sed command is robust and handles := or =
+                  sed -i -E "s/^(${VERSION_VARIABLE}\s*[:=]).*/\1 ${NEW_VERSION}/" Makefile
+                  
+                  # Commit the changes
+                  git config --global user.name "github-actions[bot]"
+                  git config --global user.email "github-actions[bot]@users.noreply.github.com"
+                  git add Makefile
+                  git commit -m "chore: Update version to ${NEW_VERSION}"
+                  echo "Commit for version update created."
+                else
+                  echo "No Makefile found. No changes will be committed."
+                fi
+                
+                # Push the new branch with the potential new commit
+                git push origin ${BRANCH_NAME}
+                echo "Branch successfully pushed."
+              fi
+
+              # Clean up
+              cd ..
+              rm -rf "$TEMP_DIR"
+
+            else
+              echo "❌ Trigger branch '${TRIGGER_BRANCH}' not found in ${repo_name}. Skipping."
+            fi
+          done
+
+          echo "Workflow finished."
