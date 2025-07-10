@@ -23,8 +23,8 @@ jobs:
           # --- CONFIGURATION FROM ORGANIZATION VARIABLES ---
           # All configuration is now sourced from org variables with sensible fallbacks.
           ORG_NAME="${{ vars.TARGET_ORG_NAME || github.repository_owner }}"
-          BRANCH_NAME="${{ vars.NEW_BRANCH_NAME }}"
-          NEW_VERSION="${{ vars.NEW_VERSION_TAG }}"
+          BRANCH_NAME="${{ vars.CURRENT_FEATURE_BRANCH_NAME }}"
+          NEW_VERSION="${{ vars.CURRENT_FEATURE_VERSION }}"
           VERSION_VARIABLE="${{ vars.MAKEFILE_VERSION_VAR || 'VERSION' }}"
           TRIGGER_BRANCH="${{ vars.TRIGGER_BRANCH_NAME || 'olive' }}"
           SOURCE_BRANCH="${{ vars.SOURCE_BRANCH_NAME || 'main' }}"
@@ -86,9 +86,9 @@ jobs:
                   echo "Makefile found. Checking for variables to update..."
 
                   # Conditionally update the VERSION variable on the openstack-operator
-                  if grep -q "^${VERSION_VARIABLE}\s*[:=]" Makefile; then
+                  if grep -q "^${VERSION_VARIABLE}\s*[:?]?=" Makefile; then
                     echo "Updating variable '${VERSION_VARIABLE}' to '${NEW_VERSION}'."
-                    sed -i -E "s/^(${VERSION_VARIABLE}\s*[:=]).*/\1 ${NEW_VERSION}/" Makefile
+                    sed -i -E "s/^(${VERSION_VARIABLE}\s*[:?]?=).*/\1 ${NEW_VERSION}/" Makefile
                     made_changes=true
                   else
                     echo "Variable '${VERSION_VARIABLE}' not found. Skipping main version update."
