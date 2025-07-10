@@ -94,33 +94,27 @@ jobs:
               git checkout -b ${BRANCH_NAME}
 
               if [ -f "Makefile" ]; then
-                made_changes=false
                 echo "Makefile found. Checking for variables to update on new branch..."
 
                 # ALL repos - Update the BRANCH variable
                 if grep -qE "^${BRANCH_VARIABLE}\s*(\?=|=)" Makefile; then
-                  echo "Updating variable '${BRANCH_VARIABLE}' to '${BRANCH_NAME}'."
                   sed -i -E "s/^(${BRANCH_VARIABLE}\s*(\?=|=)\s*).*/\1${BRANCH_NAME}/" Makefile
-                  made_changes=true
                 fi
 
                 # install_yamls - Update the OPENSTACK_K8S_TAG variable
                 if [[ "$repo_name" == "install_yamls" ]]; then
                   if grep -qE "^${OPENSTACK_K8S_TAG_VARIABLE}\s*(\?=|=)" Makefile; then
-                    NEW_K8S_TAG="${BRANCH_NAME}-latest"
-                    echo "Updating variable '${OPENSTACK_K8S_TAG_VARIABLE}' to '${NEW_K8S_TAG}'."
-                    sed -i -E "s/^(${OPENSTACK_K8S_TAG_VARIABLE}\s*(\?=|=)\s*).*/\1${NEW_K8S_TAG}/" Makefile
-                    made_changes=true
+                    sed -i -E "s/^((${OPENSTACK_K8S_TAG_VARIABLE})\s*(\?=|=)\s*).*/\1${BRANCH_NAME}-latest/" Makefile
                   fi
                 fi
                   
                 # Commit the changes only if a modification was made
-                if [ "$made_changes" = true ]; then
+                if ! git diff --quiet Makefile; then
+                  echo "Showing changes for new branch '${BRANCH_NAME}':"
+                  git diff                
                   if [ "$DRY_RUN" = "true" ]; then
-                    echo "DRY RUN: Showing changes for new branch '${BRANCH_NAME}':"
-                    git diff
+                    echo "DRY RUN: Changes not committed."
                   else
-                    git diff
                     git config --global user.name "github-actions[bot]"
                     git config --global user.email "github-actions[bot]@users.noreply.github.com"
                     git add Makefile
@@ -141,7 +135,6 @@ jobs:
                 git push origin ${BRANCH_NAME}
                 echo "Branch successfully pushed."
               fi
-              
               created_repos+="${repo_name}\n"
 
               # --- LOGIC: UPDATE SOURCE BRANCH AFTERWARDS ---
@@ -156,22 +149,25 @@ jobs:
 
                   # Conditionally update the main VERSION variable on the source branch
                   if grep -qE "^${VERSION_VARIABLE}\s*(:=|\?=|=)" Makefile; then
-                    echo "Updating variable '${VERSION_VARIABLE}' to '${FULL_MAKEFILE_VERSION}' on branch '${SOURCE_BRANCH}'."
                     sed -i -E "s/^(${VERSION_VARIABLE}\s*(:=|\?=|=)).*/\1 ${FULL_MAKEFILE_VERSION}/" Makefile
 
                     # Commit and push the change to the source branch
-                    if [ "$DRY_RUN" = "true" ]; then
-                      echo "DRY RUN: Showing changes for source branch '${SOURCE_BRANCH}':"
+                    if ! git diff --quiet Makefile; then
+                      echo "Showing changes for source branch '${SOURCE_BRANCH}':"
                       git diff
+                      if [ "$DRY_RUN" = "true" ]; then
+                        echo "DRY RUN: Changes not committed or pushed."
+                      else
+                        git config --global user.name "github-actions[bot]"
+                        git config --global user.email "github-actions[bot]@users.noreply.github.com"
+                        git add Makefile
+                        git commit -m "Bump version to ${NEW_VERSION}"
+                        echo "Pushing version update to ${SOURCE_BRANCH}..."
+                        git push origin ${SOURCE_BRANCH}
+                      fi
                     else
-                      git diff
-                      git config --global user.name "github-actions[bot]"
-                      git config --global user.email "github-actions[bot]@users.noreply.github.com"
-                      git add Makefile
-                      git commit -m "Bump version to ${NEW_VERSION}"
-                      echo "Pushing version update to ${SOURCE_BRANCH}..."
-                      git push origin ${SOURCE_BRANCH}
-                    fi
+                      echo "Version in Makefile already up to date. No changes pushed to ${SOURCE_BRANCH}."
+                    fi                      
                   else
                     echo "Variable '${VERSION_VARIABLE}' not found. No changes pushed to ${SOURCE_BRANCH}."
                   fi
