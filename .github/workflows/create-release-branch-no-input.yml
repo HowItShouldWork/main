@@ -37,6 +37,10 @@ jobs:
             echo "Error: Required organization variables FEATURE_BRANCH_NAME or MAIN_VERSION are not set."
             exit 1
           fi
+
+          if [ "$DRY_RUN" = "true" ]; then
+            echo "!!! --- Running in DRY RUN mode. No changes will be pushed. --- !!!"
+          fi
           
           echo "Running with the following configuration:"
           echo "Organization: ${ORG_NAME}"
