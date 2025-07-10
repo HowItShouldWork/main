@@ -86,9 +86,11 @@ jobs:
                   echo "Makefile found. Checking for variables to update..."
 
                   # Conditionally update the VERSION variable on the openstack-operator
-                  if grep -q "^${VERSION_VARIABLE}\s*[:?]?=" Makefile; then
-                    echo "Updating variable '${VERSION_VARIABLE}' to '${NEW_VERSION}'."
-                    sed -i -E "s/^(${VERSION_VARIABLE}\s*[:?]?=).*/\1 ${NEW_VERSION}/" Makefile
+                  if grep -qE "^${VERSION_VARIABLE}\s*(:=|\?=|=)" Makefile; then
+                    # Construct the full version string by appending ".0"
+                    FULL_MAKEFILE_VERSION="${NEW_VERSION}.0"
+                    echo "Updating variable '${VERSION_VARIABLE}' to '${FULL_MAKEFILE_VERSION}'."
+                    sed -i -E "s/^(${VERSION_VARIABLE}\s*(:=|\?=|=)).*/\1 ${FULL_MAKEFILE_VERSION}/" Makefile
                     made_changes=true
                   else
                     echo "Variable '${VERSION_VARIABLE}' not found. Skipping main version update."
