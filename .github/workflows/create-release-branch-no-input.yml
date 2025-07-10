@@ -82,16 +82,39 @@ jobs:
                 git checkout -b ${BRANCH_NAME}
 
                 if [ -f "Makefile" ]; then
-                  echo "Makefile found. Updating variable '${VERSION_VARIABLE}' to '${NEW_VERSION}'."
-                  # This sed command is robust and handles := or =
-                  sed -i -E "s/^(${VERSION_VARIABLE}\s*[:=]).*/\1 ${NEW_VERSION}/" Makefile
+                  made_changes=false
+                  echo "Makefile found. Checking for variables to update..."
+
+                  # Conditionally update the VERSION variable on the openstack-operator
+                  if grep -q "^${VERSION_VARIABLE}\s*[:=]" Makefile; then
+                    echo "Updating variable '${VERSION_VARIABLE}' to '${NEW_VERSION}'."
+                    sed -i -E "s/^(${VERSION_VARIABLE}\s*[:=]).*/\1 ${NEW_VERSION}/" Makefile
+                    made_changes=true
+                  else
+                    echo "Variable '${VERSION_VARIABLE}' not found. Skipping main version update."
+                  fi
+
+                  # Dynamically update OPENSTACK_K8S_TAG if it is set to 'latest'
+                  if grep -q "OPENSTACK_K8S_TAG\s*?=\s*latest" Makefile; then
+                    NEW_K8S_TAG="${BRANCH_NAME}-latest"
+                    echo "Found OPENSTACK_K8S_TAG with 'latest'. Updating to '${NEW_K8S_TAG}'."
+                    sed -i -E "s/^(OPENSTACK_K8S_TAG\s*\?=\s*).*/\1 ${NEW_K8S_TAG}/" Makefile
+                    made_changes=true
+                  else
+                    echo "OPENSTACK_K8S_TAG not found with 'latest' value or does not exist. No change made to this variable."
+                  fi
+                
                   
-                  # Commit the changes
-                  git config --global user.name "github-actions[bot]"
-                  git config --global user.email "github-actions[bot]@users.noreply.github.com"
-                  git add Makefile
-                  git commit -m "chore: Update version to ${NEW_VERSION}"
-                  echo "Commit for version update created."
+                  # Commit the changes only if a modification was made
+                  if [ "$made_changes" = true ]; then                  
+                    git config --global user.name "github-actions[bot]"
+                    git config --global user.email "github-actions[bot]@users.noreply.github.com"
+                    git add Makefile
+                    git commit -m "chore: Update version to ${NEW_VERSION}"
+                    echo "Commit for version update created."
+                  else
+                    echo "No updates in the Makefile. No commit will be created."
+                  fi                    
                 else
                   echo "No Makefile found. No changes will be committed."
                 fi
