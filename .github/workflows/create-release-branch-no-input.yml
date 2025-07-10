@@ -99,7 +99,7 @@ jobs:
                   #fi
 
                   # update the BRANCH variable on the openstack-operator
-                  if grep -qE "^${BRANCH_VARIABLE}\s*?=" Makefile; then
+                  if grep -q "^${BRANCH_VARIABLE}\s*?=" Makefile; then
                     echo "Updating variable '${BRANCH_VARIABLE}' to '${BRANCH_NAME}'."
                     sed -i -E "s/^(${BRANCH_VARIABLE}\s*\?=\s*).*/\1 ${BRANCH_NAME}/" Makefile
                     made_changes=true
@@ -108,7 +108,7 @@ jobs:
                   fi
 
                   # update the OPENSTACK_K8S_TAG variable on the openstack-operator
-                  if grep -qE "^${OPENSTACK_K8S_TAG_VARIABLE}\s*?=" Makefile; then
+                  if grep -q "^${OPENSTACK_K8S_TAG_VARIABLE}\s*?=" Makefile; then
                     NEW_K8S_TAG="${BRANCH_NAME}-latest"
                     echo "Updating variable '${OPENSTACK_K8S_TAG_VARIABLE}' to '${NEW_K8S_TAG}'."
                     sed -i -E "s/^(${OPENSTACK_K8S_TAG_VARIABLE}\s*\?=\s*).*/\1 ${NEW_K8S_TAG}/" Makefile
