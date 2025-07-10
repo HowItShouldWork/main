@@ -23,8 +23,8 @@ jobs:
           # --- CONFIGURATION FROM ORGANIZATION VARIABLES ---
           # All configuration is now sourced from org variables with sensible fallbacks.
           ORG_NAME="${{ vars.TARGET_ORG_NAME || github.repository_owner }}"
-          BRANCH_NAME="${{ vars.CURRENT_FEATURE_BRANCH_NAME }}"
-          NEW_VERSION="${{ vars.CURRENT_FEATURE_VERSION }}"
+          BRANCH_NAME="${{ vars.FEATURE_BRANCH_NAME }}"
+          NEW_VERSION="${{ vars.MAIN_VERSION }}"
           VERSION_VARIABLE="${{ vars.MAKEFILE_VERSION_VAR || 'VERSION' }}"
           BRANCH_VARIABLE="${{ vars.MAKEFILE_BRANCH_VAR || 'BRANCH' }}"
           OPENSTACK_K8S_TAG_VARIABLE="${{ vars.MAKEFILE_OPENSTACK_K8S_TAG_VAR || 'OPENSTACK_K8S_TAG' }}"
@@ -33,14 +33,14 @@ jobs:
 
           # Validate that required variables are set
           if [[ -z "$BRANCH_NAME" ]] || [[ -z "$NEW_VERSION" ]]; then
-            echo "Error: Required organization variables NEW_BRANCH_NAME or NEW_VERSION_TAG are not set."
+            echo "Error: Required organization variables FEATURE_BRANCH_NAME or MAIN_VERSION are not set."
             exit 1
           fi
           
           echo "Running with the following configuration:"
           echo "Organization: ${ORG_NAME}"
-          echo "New Branch Name: ${BRANCH_NAME}"
-          echo "New Version: ${NEW_VERSION}"
+          echo "Feature Branch Name: ${BRANCH_NAME}"
+          echo "New Version on main: ${NEW_VERSION}"
           echo "Trigger Branch: ${TRIGGER_BRANCH}"
           echo "Source Branch: ${SOURCE_BRANCH}"
           echo "-------------------------------------------"
@@ -59,7 +59,6 @@ jobs:
             echo "--- Checking repository: ${repo_name} ---"
 
             # Check if the trigger branch exists by checking the exit code of the API call.
-            # This is more robust than checking the command's output string.
             if gh api "repos/${ORG_NAME}/${repo_name}/branches/${TRIGGER_BRANCH}" >/dev/null 2>&1; then
               echo "✅ Trigger branch '${TRIGGER_BRANCH}' found in ${repo_name}."
 
@@ -69,74 +68,97 @@ jobs:
               
               cd "$TEMP_DIR"
 
-              if ! git show-ref --verify --quiet refs/remotes/origin/${SOURCE_BRANCH}; then
+              if ! git show-ref --verify --quiet "refs/remotes/origin/${SOURCE_BRANCH}"; then
                 echo "⚠️ Source branch '${SOURCE_BRANCH}' does not exist in ${repo_name}. Skipping."
                 cd ..
                 rm -rf "$TEMP_DIR"
                 continue
               fi
 
-              if git show-ref --verify --quiet refs/remotes/origin/${BRANCH_NAME}; then
-                echo "ℹ️ Branch '${BRANCH_NAME}' already exists in ${repo_name}. Skipping."
-              else
-                echo "Creating branch '${BRANCH_NAME}' from '${SOURCE_BRANCH}'..."
-                git checkout ${SOURCE_BRANCH}
-                git checkout -b ${BRANCH_NAME}
+              # Skip the entire repository if the new branch already exists.
+              if git show-ref --verify --quiet "refs/remotes/origin/${BRANCH_NAME}"; then
+                echo "ℹ️ Branch '${BRANCH_NAME}' already exists in ${repo_name}. Skipping this repository."
+                cd ..
+                rm -rf "$TEMP_DIR"
+                continue
+              fi
+              
+              # --- LOGIC: CREATE AND UPDATE THE NEW BRANCH ---
+              echo "Creating branch '${BRANCH_NAME}' from '${SOURCE_BRANCH}'..."
+              git checkout ${SOURCE_BRANCH}
+              git checkout -b ${BRANCH_NAME}
 
-                if [ -f "Makefile" ]; then
-                  made_changes=false
-                  echo "Makefile found. Checking for variables to update..."
+              if [ -f "Makefile" ]; then
+                made_changes=false
+                echo "Makefile found. Checking for variables to update..."
 
-                  # Conditionally update the VERSION variable on the openstack-operator
-                  #if grep -qE "^${VERSION_VARIABLE}\s*(:=|\?=|=)" Makefile; then
-                  #  # Construct the full version string by appending ".0"
-                  #  FULL_MAKEFILE_VERSION="${NEW_VERSION}.0"
-                  #  echo "Updating variable '${VERSION_VARIABLE}' to '${FULL_MAKEFILE_VERSION}'."
-                  #  sed -i -E "s/^(${VERSION_VARIABLE}\s*(:=|\?=|=)).*/\1 ${FULL_MAKEFILE_VERSION}/" Makefile
-                  #  made_changes=true
-                  #else
-                  #  echo "Variable '${VERSION_VARIABLE}' not found. Skipping version update."
-                  #fi
+                # update the BRANCH variable on the openstack-operator
+                if grep -q "^${BRANCH_VARIABLE}\s*?=" Makefile; then
+                  echo "Updating variable '${BRANCH_VARIABLE}' to '${BRANCH_NAME}'."
+                  sed -i -E "s/^(${BRANCH_VARIABLE}\s*\?=\s*).*/\1 ${BRANCH_NAME}/" Makefile
+                  made_changes=true
+                else
+                  echo "Variable '${BRANCH_VARIABLE}' not found. Skipping branch update."
+                fi
 
-                  # update the BRANCH variable on the openstack-operator
-                  if grep -q "^${BRANCH_VARIABLE}\s*?=" Makefile; then
-                    echo "Updating variable '${BRANCH_VARIABLE}' to '${BRANCH_NAME}'."
-                    sed -i -E "s/^(${BRANCH_VARIABLE}\s*\?=\s*).*/\1 ${BRANCH_NAME}/" Makefile
-                    made_changes=true
-                  else
-                    echo "Variable '${BRANCH_VARIABLE}' not found. Skipping branch update."
-                  fi
-
-                  # update the OPENSTACK_K8S_TAG variable on the openstack-operator
-                  if grep -q "^${OPENSTACK_K8S_TAG_VARIABLE}\s*?=" Makefile; then
-                    NEW_K8S_TAG="${BRANCH_NAME}-latest"
-                    echo "Updating variable '${OPENSTACK_K8S_TAG_VARIABLE}' to '${NEW_K8S_TAG}'."
-                    sed -i -E "s/^(${OPENSTACK_K8S_TAG_VARIABLE}\s*\?=\s*).*/\1 ${NEW_K8S_TAG}/" Makefile
-                    made_changes=true
-                  else
-                    echo "Variable '${OPENSTACK_K8S_TAG_VARIABLE}' not found. Skipping tag update."
-                  fi
+                # update the OPENSTACK_K8S_TAG variable on the openstack-operator
+                if grep -q "^${OPENSTACK_K8S_TAG_VARIABLE}\s*?=" Makefile; then
+                  NEW_K8S_TAG="${BRANCH_NAME}-latest"
+                  echo "Updating variable '${OPENSTACK_K8S_TAG_VARIABLE}' to '${NEW_K8S_TAG}'."
+                  sed -i -E "s/^(${OPENSTACK_K8S_TAG_VARIABLE}\s*\?=\s*).*/\1 ${NEW_K8S_TAG}/" Makefile
+                  made_changes=true
+                else
+                  echo "Variable '${OPENSTACK_K8S_TAG_VARIABLE}' not found. Skipping tag update."
+                fi
                   
-                  # Commit the changes only if a modification was made
-                  if [ "$made_changes" = true ]; then                  
-                    git config --global user.name "github-actions[bot]"
-                    git config --global user.email "github-actions[bot]@users.noreply.github.com"
-                    git add Makefile
-                    git commit -m "chore: Update version to ${NEW_VERSION}"
-                    echo "Commit for version update created."
-                  else
-                    echo "No updates in the Makefile. No commit will be created."
-                  fi                    
+                # Commit the changes only if a modification was made
+                if [ "$made_changes" = true ]; then                  
+                  git config --global user.name "github-actions[bot]"
+                  git config --global user.email "github-actions[bot]@users.noreply.github.com"
+                  git add Makefile
+                  git commit -m "[${BRANCH_NAME}] Update Makefile for ${BRANCH_NAME}"
+                  echo "Commit for version update created."
+                else
+                  echo "No updates in the Makefile. No commit will be created."
+                fi                    
                 else
                   echo "No Makefile found. No changes will be committed."
                 fi
-                
-                # Push the new branch with the potential new commit
-                git push origin ${BRANCH_NAME}
-                echo "Branch successfully pushed."
-                created_repos+="${repo_name}\n"
               fi
+              
+              # Push the new branch with the potential new commit
+              git push origin ${BRANCH_NAME}
+              echo "Branch successfully pushed."
+              created_repos+="${repo_name}\n"
 
+              # --- LOGIC: UPDATE SOURCE BRANCH AFTERWARDS ---
+              git checkout ${SOURCE_BRANCH}
+              # Ensure we have the latest version of the source branch before making changes
+              git pull origin ${SOURCE_BRANCH}
+
+              if [ -f "Makefile" ]; then
+                  # Construct the full version string by appending ".0"
+                  FULL_MAKEFILE_VERSION="${NEW_VERSION}.0"
+
+                  # Conditionally update the main VERSION variable on the source branch
+                  if grep -qE "^${VERSION_VARIABLE}\s*(:=|\?=|=)" Makefile; then
+                    echo "Updating variable '${VERSION_VARIABLE}' to '${FULL_MAKEFILE_VERSION}' on branch '${SOURCE_BRANCH}'."
+                    sed -i -E "s/^(${VERSION_VARIABLE}\s*(:=|\?=|=)).*/\1 ${FULL_MAKEFILE_VERSION}/" Makefile
+                    
+                    # Commit and push the change to the source branch
+                    git config --global user.name "github-actions[bot]"
+                    git config --global user.email "github-actions[bot]@users.noreply.github.com"
+                    git add Makefile
+                    git commit -m "Update version to ${NEW_VERSION}"
+                    echo "Pushing version update to ${SOURCE_BRANCH}..."
+                    git push origin ${SOURCE_BRANCH}
+                  else
+                    echo "Variable '${VERSION_VARIABLE}' not found. No changes pushed to ${SOURCE_BRANCH}."
+                  fi
+              else
+                  echo "No Makefile found. No changes pushed to ${SOURCE_BRANCH}."
+              fi
+              
               # Clean up
               cd ..
               rm -rf "$TEMP_DIR"
