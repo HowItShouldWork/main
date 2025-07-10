@@ -90,25 +90,21 @@ jobs:
 
               if [ -f "Makefile" ]; then
                 made_changes=false
-                echo "Makefile found. Checking for variables to update..."
+                echo "Makefile found. Checking for variables to update on new branch..."
 
-                # update the BRANCH variable on the openstack-operator
-                if grep -q "^${BRANCH_VARIABLE}\s*?=" Makefile; then
+                # Update the BRANCH variable
+                if grep -qE "^${BRANCH_VARIABLE}\s*(\?=|=)" Makefile; then
                   echo "Updating variable '${BRANCH_VARIABLE}' to '${BRANCH_NAME}'."
-                  sed -i -E "s/^(${BRANCH_VARIABLE}\s*\?=\s*).*/\1 ${BRANCH_NAME}/" Makefile
+                  sed -i -E "s/^(${BRANCH_VARIABLE}\s*(\?=|=)\s*).*/\1${BRANCH_NAME}/" Makefile
                   made_changes=true
-                else
-                  echo "Variable '${BRANCH_VARIABLE}' not found. Skipping branch update."
                 fi
 
-                # update the OPENSTACK_K8S_TAG variable on the openstack-operator
-                if grep -q "^${OPENSTACK_K8S_TAG_VARIABLE}\s*?=" Makefile; then
+                # Update the OPENSTACK_K8S_TAG variable
+                if grep -qE "^${OPENSTACK_K8S_TAG_VARIABLE}\s*(\?=|=)" Makefile; then
                   NEW_K8S_TAG="${BRANCH_NAME}-latest"
                   echo "Updating variable '${OPENSTACK_K8S_TAG_VARIABLE}' to '${NEW_K8S_TAG}'."
-                  sed -i -E "s/^(${OPENSTACK_K8S_TAG_VARIABLE}\s*\?=\s*).*/\1 ${NEW_K8S_TAG}/" Makefile
+                  sed -i -E "s/^(${OPENSTACK_K8S_TAG_VARIABLE}\s*(\?=|=)\s*).*/\1${NEW_K8S_TAG}/" Makefile
                   made_changes=true
-                else
-                  echo "Variable '${OPENSTACK_K8S_TAG_VARIABLE}' not found. Skipping tag update."
                 fi
                   
                 # Commit the changes only if a modification was made
@@ -119,11 +115,10 @@ jobs:
                   git commit -m "[${BRANCH_NAME}] Update Makefile for ${BRANCH_NAME}"
                   echo "Commit for version update created."
                 else
-                  echo "No updates in the Makefile. No commit will be created."
+                  echo "No updates in the Makefile. No commit will be created for this branch."
                 fi                    
-                else
-                  echo "No Makefile found. No changes will be committed."
-                fi
+              else
+                  echo "No Makefile found. No changes will be committed to new branch."
               fi
               
               # Push the new branch with the potential new commit
@@ -149,7 +144,7 @@ jobs:
                     git config --global user.name "github-actions[bot]"
                     git config --global user.email "github-actions[bot]@users.noreply.github.com"
                     git add Makefile
-                    git commit -m "Update version to ${NEW_VERSION}"
+                    git commit -m "Bump version to ${NEW_VERSION}"
                     echo "Pushing version update to ${SOURCE_BRANCH}..."
                     git push origin ${SOURCE_BRANCH}
                   else
