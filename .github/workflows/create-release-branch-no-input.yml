@@ -26,6 +26,8 @@ jobs:
           BRANCH_NAME="${{ vars.CURRENT_FEATURE_BRANCH_NAME }}"
           NEW_VERSION="${{ vars.CURRENT_FEATURE_VERSION }}"
           VERSION_VARIABLE="${{ vars.MAKEFILE_VERSION_VAR || 'VERSION' }}"
+          BRANCH_VARIABLE="${{ vars.MAKEFILE_BRANCH_VAR || 'BRANCH' }}"
+          OPENSTACK_K8S_TAG_VARIABLE="${{ vars.MAKEFILE_OPENSTACK_K8S_TAG_VAR || 'OPENSTACK_K8S_TAG' }}"
           TRIGGER_BRANCH="${{ vars.TRIGGER_BRANCH_NAME || 'olive' }}"
           SOURCE_BRANCH="${{ vars.SOURCE_BRANCH_NAME || 'main' }}"
 
@@ -85,27 +87,35 @@ jobs:
                   made_changes=false
                   echo "Makefile found. Checking for variables to update..."
 
-                  # Conditionally update the VERSION variable on the openstack-operator
-                  if grep -qE "^${VERSION_VARIABLE}\s*(:=|\?=|=)" Makefile; then
-                    # Construct the full version string by appending ".0"
-                    FULL_MAKEFILE_VERSION="${NEW_VERSION}.0"
-                    echo "Updating variable '${VERSION_VARIABLE}' to '${FULL_MAKEFILE_VERSION}'."
-                    sed -i -E "s/^(${VERSION_VARIABLE}\s*(:=|\?=|=)).*/\1 ${FULL_MAKEFILE_VERSION}/" Makefile
+#                  # Conditionally update the VERSION variable on the openstack-operator
+#                  if grep -qE "^${VERSION_VARIABLE}\s*(:=|\?=|=)" Makefile; then
+#                    # Construct the full version string by appending ".0"
+#                    FULL_MAKEFILE_VERSION="${NEW_VERSION}.0"
+#                    echo "Updating variable '${VERSION_VARIABLE}' to '${FULL_MAKEFILE_VERSION}'."
+#                    sed -i -E "s/^(${VERSION_VARIABLE}\s*(:=|\?=|=)).*/\1 ${FULL_MAKEFILE_VERSION}/" Makefile
+#                    made_changes=true
+#                  else
+#                    echo "Variable '${VERSION_VARIABLE}' not found. Skipping version update."
+#                  fi
+
+                  # update the BRANCH variable on the openstack-operator
+                  if grep -qE "^${BRANCH_VARIABLE}\s*?=" Makefile; then
+                    echo "Updating variable '${BRANCH_VARIABLE}' to '${BRANCH_NAME}'."
+                    sed -i -E "s/^(${BRANCH_VARIABLE}\s*\?=\s*).*/\1 ${BRANCH_NAME}/" Makefile
                     made_changes=true
                   else
-                    echo "Variable '${VERSION_VARIABLE}' not found. Skipping main version update."
+                    echo "Variable '${BRANCH_VARIABLE}' not found. Skipping branch update."
                   fi
 
-                  # Dynamically update OPENSTACK_K8S_TAG if it is set to 'latest'
-                  if grep -q "OPENSTACK_K8S_TAG\s*?=\s*latest" Makefile; then
+                  # update the OPENSTACK_K8S_TAG variable on the openstack-operator
+                  if grep -qE "^${OPENSTACK_K8S_TAG_VARIABLE}\s*?=" Makefile; then
                     NEW_K8S_TAG="${BRANCH_NAME}-latest"
-                    echo "Found OPENSTACK_K8S_TAG with 'latest'. Updating to '${NEW_K8S_TAG}'."
-                    sed -i -E "s/^(OPENSTACK_K8S_TAG\s*\?=\s*).*/\1 ${NEW_K8S_TAG}/" Makefile
+                    echo "Updating variable '${OPENSTACK_K8S_TAG_VARIABLE}' to '${NEW_K8S_TAG}'."
+                    sed -i -E "s/^(${OPENSTACK_K8S_TAG_VARIABLE}\s*\?=\s*).*/\1 ${NEW_K8S_TAG}/" Makefile
                     made_changes=true
                   else
-                    echo "OPENSTACK_K8S_TAG not found with 'latest' value or does not exist. No change made to this variable."
+                    echo "Variable '${OPENSTACK_K8S_TAG_VARIABLE}' not found. Skipping tag update."
                   fi
-                
                   
                   # Commit the changes only if a modification was made
                   if [ "$made_changes" = true ]; then                  
