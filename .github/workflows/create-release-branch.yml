@@ -61,6 +61,8 @@ jobs:
             exit 1
           fi
 
+          created_repos=""
+
           for repo_name in $repos; do
             echo "--- Checking repository: ${repo_name} ---"
 
@@ -107,6 +109,7 @@ jobs:
                 # Push the new branch with the potential new commit
                 git push origin ${BRANCH_NAME}
                 echo "Branch successfully pushed."
+                created_repos+="${repo_name}\n"
               fi
 
               # Clean up
@@ -118,4 +121,11 @@ jobs:
             fi
           done
 
+          echo "-------------------------------------------"
+          echo "Summary of created branches:"
+          if [[ -n "$created_repos" ]]; then
+            echo -e "$created_repos"
+          else
+            echo "No new branches were created."
+          fi
           echo "Workflow finished."
