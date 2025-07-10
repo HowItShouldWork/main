@@ -139,6 +139,10 @@ jobs:
 
               # --- LOGIC: UPDATE SOURCE BRANCH AFTERWARDS ---
               if [[ "$repo_name" == "openstack-operator" ]]; then
+                # Reset any uncommitted changes before switching branch.
+                # In non-dry-run, this does nothing as changes were committed.
+                # In dry-run, this discards the generated diff.
+                git reset --hard              
                 git checkout ${SOURCE_BRANCH}
                 # Ensure we have the latest version of the source branch before making changes
                 git pull origin ${SOURCE_BRANCH}
