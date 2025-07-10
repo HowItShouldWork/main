@@ -64,10 +64,9 @@ jobs:
           for repo_name in $repos; do
             echo "--- Checking repository: ${repo_name} ---"
 
-            # Check if the trigger branch exists in the repository
-            branch_exists_response=$(gh api repos/${ORG_NAME}/${repo_name}/branches/${TRIGGER_BRANCH} --jq '.name' 2>/dev/null || true)
-
-            if [[ -n "$branch_exists_response" ]]; then
+            # Check if the trigger branch exists by checking the exit code of the API call.
+            # This is more robust than checking the command's output string.
+            if gh api "repos/${ORG_NAME}/${repo_name}/branches/${TRIGGER_BRANCH}" >/dev/null 2>&1; then
               echo "✅ Trigger branch '${TRIGGER_BRANCH}' found in ${repo_name}."
 
               TEMP_DIR=$(mktemp -d)
