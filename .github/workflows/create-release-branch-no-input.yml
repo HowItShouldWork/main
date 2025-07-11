@@ -23,7 +23,7 @@ jobs:
           # --- CONFIGURATION FROM ORGANIZATION VARIABLES ---
           # All configuration is now sourced from org variables with sensible fallbacks.
           ORG_NAME="${{ vars.TARGET_ORG_NAME || github.repository_owner }}"
-          BRANCH_NAME="${{ vars.FEATURE_BRANCH_NAME }}"
+          BRANCH_NAME="${{ vars.FEATURE_RELEASE_BRANCH }}"
           NEW_VERSION="${{ vars.MAIN_VERSION }}"
           VERSION_VARIABLE="${{ vars.MAKEFILE_VERSION_VAR || 'VERSION' }}"
           BRANCH_VARIABLE="${{ vars.MAKEFILE_BRANCH_VAR || 'BRANCH' }}"
