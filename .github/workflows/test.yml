@@ -2,10 +2,13 @@
 name: test input
 
 on:
-  # This workflow can be run manually from the Actions tab.
-  # It sources its configuration from organization variables.
   workflow_dispatch:
-
+    inputs:
+      source_branch:
+        type: string
+        required: false
+        default: 18.0-fr3
+        
 jobs:
   your-job:
     runs-on: ubuntu-latest
