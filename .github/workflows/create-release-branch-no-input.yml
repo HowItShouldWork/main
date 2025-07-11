@@ -63,6 +63,11 @@ jobs:
           for repo_name in $repos; do
             echo "--- Checking repository: ${repo_name} ---"
 
+            # for now skip rabbitmq-cluster-operator
+            if [[ "$repo_name" == "rabbitmq-cluster-operator" ]]; then 
+              continue
+            fi
+
             # Check if the trigger branch exists by checking the exit code of the API call.
             if gh api "repos/${ORG_NAME}/${repo_name}/branches/${TRIGGER_BRANCH}" >/dev/null 2>&1; then
               echo "✅ Trigger branch '${TRIGGER_BRANCH}' found in ${repo_name}."
