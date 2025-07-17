@@ -1,0 +1,216 @@
+# .github/workflows/create-release-branch.yml
+name: Create Feature Branches in Repos
+
+on:
+  # This workflow can be run manually from the Actions tab.
+  workflow_dispatch:
+    inputs:
+      DRY_RUN:
+        description: 'Run without pushing any changes. Set to false to apply changes.'
+        required: true
+        type: boolean
+        default: true
+
+jobs:
+  create-branches:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code (for the workflow itself)
+        uses: actions/checkout@v4
+
+      - name: Create Branches and Update Version
+        env:
+          # The PAT is required and read from secrets.
+          GH_TOKEN: ${{ secrets.ORG_ADMIN_PAT }}
+        run: |
+          set -e # Exit immediately if a command exits with a non-zero status.
+
+          # --- CONFIGURATION FROM ORGANIZATION VARIABLES ---
+          # All configuration is now sourced from org variables with sensible fallbacks.
+          ORG_NAME="${{ vars.TARGET_ORG_NAME || github.repository_owner }}"
+          BRANCH_NAME="${{ vars.FEATURE_RELEASE_BRANCH }}"
+          NEW_VERSION="${{ vars.MAIN_VERSION }}"
+          VERSION_VARIABLE="${{ vars.MAKEFILE_VERSION_VAR || 'VERSION' }}"
+          BRANCH_VARIABLE="${{ vars.MAKEFILE_BRANCH_VAR || 'BRANCH' }}"
+          OPENSTACK_K8S_TAG_VARIABLE="${{ vars.MAKEFILE_OPENSTACK_K8S_TAG_VAR || 'OPENSTACK_K8S_TAG' }}"
+          TRIGGER_BRANCH="${{ vars.TRIGGER_BRANCH_NAME || 'olive' }}"
+          SOURCE_BRANCH="${{ vars.SOURCE_BRANCH_NAME || 'main' }}"
+          # --- INPUTS ---
+          # DRY_RUN is now sourced from the workflow inputs.
+          DRY_RUN="${{ inputs.DRY_RUN }}"
+
+          # Validate that required variables are set
+          if [[ -z "$BRANCH_NAME" ]] || [[ -z "$NEW_VERSION" ]]; then
+            echo "Error: Required organization variables FEATURE_BRANCH_NAME or MAIN_VERSION are not set."
+            exit 1
+          fi
+
+          if [ "$DRY_RUN" = "true" ]; then
+            echo "!!! --- Running in DRY RUN mode. No changes will be pushed. --- !!!"
+          fi
+          
+          echo "Running with the following configuration:"
+          echo "Organization: ${ORG_NAME}"
+          echo "Feature Branch Name: ${BRANCH_NAME}"
+          echo "New Version on main: ${NEW_VERSION}"
+          echo "Trigger Branch: ${TRIGGER_BRANCH}"
+          echo "Source Branch: ${SOURCE_BRANCH}"
+          echo "-------------------------------------------"
+          
+          echo "Searching for repositories in organization '${ORG_NAME}'..."
+          repos=$(gh repo list $ORG_NAME --limit 1000 --json name --jq '.[] | .name')
+
+          if [ -z "$repos" ]; then
+            echo "No repositories found in the organization or permissions are missing."
+            exit 1
+          fi
+
+          created_repos=""
+
+          for repo_name in $repos; do
+            echo "--- Checking repository: ${repo_name} ---"
+
+            # for now skip rabbitmq-cluster-operator
+            if [[ "$repo_name" == "rabbitmq-cluster-operator" ]]; then 
+              continue
+            fi
+
+            # Check if the trigger branch exists by checking the exit code of the API call.
+            if gh api "repos/${ORG_NAME}/${repo_name}/branches/${TRIGGER_BRANCH}" >/dev/null 2>&1; then
+              echo "✅ Trigger branch '${TRIGGER_BRANCH}' found in ${repo_name}."
+
+              TEMP_DIR=$(mktemp -d)
+              echo "Cloning repository into ${TEMP_DIR}..."
+              git clone "https://x-access-token:${GH_TOKEN}@github.com/${ORG_NAME}/${repo_name}.git" "$TEMP_DIR"
+              
+              cd "$TEMP_DIR"
+
+              if ! git show-ref --verify --quiet "refs/remotes/origin/${SOURCE_BRANCH}"; then
+                echo "⚠️ Source branch '${SOURCE_BRANCH}' does not exist in ${repo_name}. Skipping."
+                cd ..
+                rm -rf "$TEMP_DIR"
+                continue
+              fi
+
+              # Skip the entire repository if the new branch already exists.
+              if git show-ref --verify --quiet "refs/remotes/origin/${BRANCH_NAME}"; then
+                echo "ℹ️ Branch '${BRANCH_NAME}' already exists in ${repo_name}. Skipping this repository."
+                cd ..
+                rm -rf "$TEMP_DIR"
+                continue
+              fi
+              
+              # --- LOGIC: CREATE AND UPDATE THE NEW BRANCH ---
+              echo "Creating branch '${BRANCH_NAME}' from '${SOURCE_BRANCH}'..."
+              git checkout ${SOURCE_BRANCH}
+              git checkout -b ${BRANCH_NAME}
+
+              if [ -f "Makefile" ]; then
+                echo "Makefile found. Checking for variables to update on new branch..."
+
+                # ALL repos - Update the BRANCH variable
+                if grep -qE "^${BRANCH_VARIABLE}\s*(\?=|=)" Makefile; then
+                  sed -i -E "s/^(${BRANCH_VARIABLE}\s*(\?=|=)\s*).*/\1${BRANCH_NAME}/" Makefile
+                fi
+
+                # install_yamls - Update the OPENSTACK_K8S_TAG variable
+                if [[ "$repo_name" == "install_yamls" ]]; then
+                  if grep -qE "^${OPENSTACK_K8S_TAG_VARIABLE}\s*(\?=|=)" Makefile; then
+                    sed -i -E "s/^((${OPENSTACK_K8S_TAG_VARIABLE})\s*(\?=|=)\s*).*/\1${BRANCH_NAME}-latest/" Makefile
+                  fi
+                fi
+                  
+                # Commit the changes only if a modification was made
+                if ! git diff --quiet Makefile; then
+                  echo "Showing changes for new branch '${BRANCH_NAME}':"
+                  git diff                
+                  if [ "$DRY_RUN" = "true" ]; then
+                    echo "DRY RUN: Changes not committed."
+                  else
+                    git config --global user.name "github-actions[bot]"
+                    git config --global user.email "github-actions[bot]@users.noreply.github.com"
+                    git add Makefile
+                    git commit -m "[${BRANCH_NAME}] Update Makefile for ${BRANCH_NAME}"
+                    echo "Commit for version update created."
+                  fi
+                else
+                  echo "No updates in the Makefile. No commit will be created for this branch."
+                fi                    
+              else
+                  echo "No Makefile found. No changes will be committed to new branch."
+              fi
+
+              # Push the new branch with the potential new commit
+              if [ "$DRY_RUN" = "true" ]; then
+                echo "DRY RUN: Would push branch '${BRANCH_NAME}'."
+              else
+                git push origin ${BRANCH_NAME}
+                echo "Branch successfully pushed."
+              fi
+              created_repos+="- ${repo_name}\n"
+
+              # --- LOGIC: UPDATE SOURCE BRANCH AFTERWARDS ---
+              if [[ "$repo_name" == "openstack-operator" ]]; then
+                # Reset any uncommitted changes before switching branch.
+                # In non-dry-run, this does nothing as changes were committed.
+                # In dry-run, this discards the generated diff.
+                git reset --hard              
+                git checkout ${SOURCE_BRANCH}
+                # Ensure we have the latest version of the source branch before making changes
+                git pull origin ${SOURCE_BRANCH}
+
+                if [ -f "Makefile" ]; then
+                  # Construct the full version string by appending ".0"
+                  FULL_MAKEFILE_VERSION="${NEW_VERSION}.0"
+
+                  # Conditionally update the main VERSION variable on the source branch
+                  if grep -qE "^${VERSION_VARIABLE}\s*(:=|\?=|=)" Makefile; then
+                    sed -i -E "s/^(${VERSION_VARIABLE}\s*(:=|\?=|=)).*/\1 ${FULL_MAKEFILE_VERSION}/" Makefile
+
+                    # Commit and push the change to the source branch
+                    if ! git diff --quiet Makefile; then
+                      echo "Showing changes for source branch '${SOURCE_BRANCH}':"
+                      git diff
+                      if [ "$DRY_RUN" = "true" ]; then
+                        echo "DRY RUN: Changes not committed or pushed."
+                      else
+                        git config --global user.name "github-actions[bot]"
+                        git config --global user.email "github-actions[bot]@users.noreply.github.com"
+                        git add Makefile
+                        git commit -m "Bump version to ${NEW_VERSION}"
+                        echo "Pushing version update to ${SOURCE_BRANCH}..."
+                        git push origin ${SOURCE_BRANCH}
+                      fi
+                    else
+                      echo "Version in Makefile already up to date. No changes pushed to ${SOURCE_BRANCH}."
+                    fi                      
+                  else
+                    echo "Variable '${VERSION_VARIABLE}' not found. No changes pushed to ${SOURCE_BRANCH}."
+                  fi
+                else
+                  echo "No Makefile found. No changes pushed to ${SOURCE_BRANCH}."
+                fi
+              fi
+              
+              # Clean up
+              cd ..
+              rm -rf "$TEMP_DIR"
+
+            else
+              echo "❌ Trigger branch '${TRIGGER_BRANCH}' not found in ${repo_name}. Skipping."
+            fi
+          done
+
+          echo "-------------------------------------------"
+          if [ "$DRY_RUN" = "true" ]; then
+            echo "Summary of repos where the new branch ${BRANCH_NAME} would have been created (DRY RUN):"
+          else
+            echo "Summary of repos where the new branch ${BRANCH_NAME} was created:"
+          fi
+
+          if [[ -n "$created_repos" ]]; then
+            echo -e "$created_repos"
+          else
+            echo "No new branches were created."
+          fi
+          echo "Workflow finished."
