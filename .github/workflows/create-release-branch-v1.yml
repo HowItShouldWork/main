@@ -15,13 +15,20 @@ jobs:
   create-branches:
     runs-on: ubuntu-latest
     steps:
+      - name: Generate a token from the GitHub App
+        id: generate_token
+        uses: actions/create-github-app-token@v1
+        with:
+          app_id: ${{ secrets.APP_ID }}
+          private_key: ${{ secrets.APP_PRIVATE_KEY }}
+          
       - name: Checkout code (for the workflow itself)
         uses: actions/checkout@v4
 
       - name: Create Branches and Update Version
         env:
-          # The PAT is required and read from secrets.
-          GH_TOKEN: ${{ secrets.ORG_ADMIN_PAT }}
+          # Use the token generated from the GitHub App
+          GH_TOKEN: ${{ steps.generate_token.outputs.token }}
         run: |
           set -e # Exit immediately if a command exits with a non-zero status.
 
