@@ -1,5 +1,5 @@
-# .github/workflows/create-release-branch.yml
-name: Create Feature Branches in Repos
+# .github/workflows/create-release-branch-v1.yml
+name: Create Feature Branches in Repos v1
 
 on:
   # This workflow can be run manually from the Actions tab.
