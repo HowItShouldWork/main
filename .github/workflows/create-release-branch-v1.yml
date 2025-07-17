@@ -21,6 +21,12 @@ jobs:
         with:
           app-id: ${{ secrets.APP_ID }}
           private-key: ${{ secrets.APP_PRIVATE_KEY }}
+
+      - name: Install yq
+        run: |
+          sudo wget https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64 -O /usr/bin/yq
+          sudo chmod +x /usr/bin/yq
+          echo "yq version $(yq --version) installed."
           
       - name: Checkout code (for the workflow itself)
         uses: actions/checkout@v4
@@ -142,9 +148,50 @@ jobs:
                   fi
                 else
                   echo "No updates in the Makefile. No commit will be created for this branch."
-                fi                    
+                fi
               else
                   echo "No Makefile found. No changes will be committed to new branch."
+              fi
+
+              if [[ "$repo_name" == "openstack-k8s-operators-ci" ]]; then
+                WORKFLOW_FILE=".github/workflows/release-branch-sync.yaml"
+
+                if [ ! -f "${WORKFLOW_FILE}" ]; then
+                  TARGET_PATH=".on.workflow_call.inputs.source_branch.default"
+
+                  # First, check if the path exists in the YAML file.
+                  # The '-e' (exit-status) flag causes yq to exit with a non-zero status
+                  # if the expression evaluates to false, null, or empty.
+                  if yq -e "has(${TARGET_PATH})" "${WORKFLOW_FILE}" >/dev/null; then
+                    # Path exists, get the current value to see if an update is needed.
+                    CURRENT_VALUE=$(yq e "${TARGET_PATH}" "${WORKFLOW_FILE}")
+
+                    echo "Path '$TARGET_PATH' found. Updating default from '${CURRENT_VALUE}' to '${BRANCH_NAME}'..."
+
+                    # Use yq to update the value in-place since the path is confirmed to exist.
+                    # The '-i' flag tells yq to modify the file directly.
+                    yq -i "${TARGET_PATH} = \"${BRANCH_NAME}\"" "${WORKFLOW_FILE}"
+
+                    # Commit the changes only if a modification was made
+                    if ! git diff --quiet ${WORKFLOW_FILE}; then
+                      echo "Showing changes for new branch '${BRANCH_NAME}':"
+                      git diff                
+                      if [ "$DRY_RUN" = "true" ]; then
+                        echo "DRY RUN: Changes not committed."
+                      else
+                        git config --global user.name "github-actions[bot]"
+                        git config --global user.email "github-actions[bot]@users.noreply.github.com"
+                        git add Makefile
+                        git commit -m "[${BRANCH_NAME}] Update ${WORKFLOW_FILE} for ${BRANCH_NAME}"
+                        echo "Commit for version update created."
+                      fi
+                    else
+                      echo "No updates in the ${WORKFLOW_FILE}. No commit will be created for this branch."
+                    fi
+                  else
+                    echo "Path '$TARGET_PATH' not found in '${WORKFLOW_FILE}'. No changes made."
+                  fi
+                fi
               fi
 
               # Push the new branch with the potential new commit
